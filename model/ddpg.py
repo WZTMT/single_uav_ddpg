@@ -36,12 +36,12 @@ class DDPG:
     unsqueeze()在指定的位置上增加1维的维度，如(2,3).unsqueeze(0)后变成(1,2,3)
     '''
     def choose_action(self, state):
-        # 变成二维tensor，[1,3]，因为一维的标量不能做tensor的乘法，actor中第一层的weight形状为[3,512]
+        # 变成二维tensor，[1,3]，因为一维的标量不能做tensor的乘法，actor中第一层的weight形状为[3,512](标量也可以做乘法)
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         action = self.actor(state)
         # tensor.detach()与tensor.data的功能相同，但是若因外部修改导致梯度反向传播出错，.detach()会报错，.data不行
         action = action.detach().cpu().numpy()
-        ax = action[0, 0]  # 前面是一个数组，[0,0]取出第一个元素
+        ax = action[0, 0]  # 前面是一个数组，仅包含一条数据，[0,0]取出第一个元素
         ay = action[0, 1]
         az = action[0, 2]
         return ax, ay, az
@@ -49,25 +49,25 @@ class DDPG:
     def update(self):
         if len(self.memory) < self.batch_size:  # 当 memory 中不满足一个批量时，不更新策略
             return
-        # 从经验回放缓冲池中随机采样一个批量的transition
+        # 从经验回放缓冲池中随机采样一个批量的transition，每次用一个batch_size的数据进行训练
         state, action, reward, next_state, done = self.memory.sample(self.batch_size)
-        # 转变为张量
-        state = torch.FloatTensor(np.array(state)).to(self.device)
+        # 转变为张量，得到的都是二维的tensor，第一个数字是batch_size，state(256,47)，reward(256,1)
+        state = torch.FloatTensor(np.array(state)).to(self.device)  # 计算出来直接是一个二维的tensor
         next_state = torch.FloatTensor(np.array(next_state)).to(self.device)
         action = torch.FloatTensor(np.array(action)).to(self.device)
         reward = torch.FloatTensor(reward).unsqueeze(1).to(self.device)
         done = torch.FloatTensor(np.float32(done)).unsqueeze(1).to(self.device)
 
-        policy_loss = self.critic(state, self.actor(state))  # 疑问：一维二维都能作为网络输入？
-        policy_loss = -policy_loss.mean()
+        policy_loss = self.critic(state, self.actor(state))  # 一维二维都能作为网络输入, 输出与输入的维度保持一致
+        policy_loss = -policy_loss.mean()  # 计算一个bach_size的policy_loss的均值
 
         # 用target网络计算y值(expected_value)
         next_action = self.target_actor(next_state)
-        target_value = self.target_critic(next_state, next_action.detach())
-        expected_value = reward + (1.0 - done) * self.gamma * target_value
+        target_value = self.target_critic(next_state, next_action.detach())  # 一个网络的输出作为另一个网络的输入，需要.detach()，取出不带梯度的数据
+        expected_value = reward + (1.0 - done) * self.gamma * target_value  # 对于episode结束的Transition，因为不存在new_action，不计算q值
         expected_value = torch.clamp(expected_value, -np.inf, np.inf)
 
-        value = self.critic(state, action)
+        value = self.critic(state, action)  # online网络的计算结果为原值
         mse_loss = nn.MSELoss()
         value_loss = mse_loss(value, expected_value.detach())
 
@@ -99,5 +99,17 @@ class DDPG:
 
 
 if __name__ == '__main__':
-    state = torch.FloatTensor([.1]).mean()
+    reward = [.5]
+    state = torch.FloatTensor(reward).unsqueeze(0)
     print(state)
+
+    input = torch.FloatTensor([[.2, .3, .4], [.4, .5, .6]])
+    print(input.shape)
+    test1 = nn.Linear(3, 1024)
+    test2 = nn.Linear(1024, 1)
+    x = test1(input)
+    output = test2(x)
+    print(output.shape)
+    print(output)
+    print(output.detach())
+    print(output.mean())

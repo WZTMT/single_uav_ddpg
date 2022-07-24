@@ -1,4 +1,6 @@
 import random
+import torch
+import numpy as np
 
 
 class ReplayBuffer:
@@ -17,9 +19,9 @@ class ReplayBuffer:
         self.position = (self.position + 1) % self.capacity
 
     def sample(self, batch_size):
-        batch = random.sample(self.buffer, batch_size)  # 随机采出小批量转移
+        batch = random.sample(self.buffer, batch_size)  # 随机采出小批量transition
         # 解压成状态，动作等，zip()表示压缩，是将每一个的第一个元素取出来，放入[]中作为第一个元素
-        # zip(*)是其逆操作，是将[]中每个元素的第一个取出来，合并成第一个结果
+        # zip(*)是其逆操作，是将[]中每个元素的第一个取出来，合并成第一个结果，每个结果都是一个()
         state, action, reward, next_state, done = zip(*batch)
         return state, action, reward, next_state, done
 
@@ -28,3 +30,17 @@ class ReplayBuffer:
         返回当前存储的量
         """
         return len(self.buffer)
+
+
+if __name__ == '__main__':
+    state = [[1, 2, 3], [2, 4, 3], [4, 5, 6]]
+    reward = [.1, .2, .3]
+    done = [True, False, False]
+    batch = zip(state, reward, done)
+    # print(list(batch))  # 用list()会改变batch
+    s, r, d = zip(*batch)
+    print(s, r, d)
+    state = torch.FloatTensor(np.array(s))
+    reward = torch.FloatTensor(r).unsqueeze(0)
+    done = torch.FloatTensor(np.float32(d)).unsqueeze(1)
+    print(state, reward, done)
