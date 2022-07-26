@@ -71,21 +71,25 @@ def train(cfg, client, agent):
         state = env.get_state()
         ou_noise.reset()
         ep_reward = 0
+        env.current_set(client)
+        finish_step = 0
         for i_step in range(cfg.max_step):
-            env.current_set(client)
+            finish_step = finish_step + 1
             action = agent.choose_action(state)
             action = action + ou_noise(t=i_step)  # 动作加噪音
             # 加速度范围 ax[-1,1] ay[-1,1] az[-1,1] 速度大致范围 vx[-11,11] vy[-11,11] vz[-8,8]
             action = np.clip(action, -0.5, 0.5)  # 裁剪
-            next_state, reward, done = env.step(action)
+            next_state, reward, done = env.step(action, i_step)
             ep_reward += reward
             agent.memory.push(state, action, reward, next_state, done)
             agent.update()
             state = next_state
+            print('\rEpisode: {} Step: {} Reward: {:.2f} Target: {} Now: {}'.format(i_ep+1, i_step+1,  ep_reward, state[3:6], state[0:3]), end="")
             if done:
                 break
+        print('\rEpisode: {} Finish step: {} Reward: {:.2f} Target: {}'.format(i_ep+1, finish_step, ep_reward, state[3:6]))
         if (i_ep + 1) % 10 == 0:
-            print(f'Env:{i_ep + 1}/{cfg.train_eps}, Reward:{ep_reward:.2f}')
+            agent.save(path=cfg.model_path)
         rewards.append(ep_reward)
         if ma_rewards:
             ma_rewards.append(0.9 * ma_rewards[-1] + 0.1 * ep_reward)
@@ -105,12 +109,10 @@ def train(cfg, client, agent):
 if __name__ == '__main__':
     cfg = get_args()
     set_seed(cfg.seed)
+    make_dir(cfg.result_path, cfg.model_path)
     client = airsim.MultirotorClient()  # connect to the AirSim simulator
     agent = DDPG(cfg=cfg)
     rewards, ma_rewards = train(cfg, client, agent)
-
-    make_dir(cfg.result_path, cfg.model_path)
     save_args(cfg)
-    agent.save(path=cfg.model_path)
     save_results(rewards, ma_rewards, tag='train', path=cfg.result_path)
     plot_rewards(rewards, ma_rewards, cfg, tag="train")  # 画出结果

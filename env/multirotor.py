@@ -78,8 +78,8 @@ class Multirotor:
 
         model_a = pow(ax ** 2 + ay ** 2 + az ** 2, 0.5)
         model_b = pow(bx ** 2 + by ** 2 + bz ** 2, 0.5)
-        # if model_b == 0 or model_b == 0:
-        #     return 0
+        model_a = model_a if model_a != 0 else 0.01
+        model_b = model_b if model_b != 0 else 0.01
         cos_ab = (ax * bx + ay * by + az * bz) / (model_a * model_b)
         radius = acos(cos_ab)  # 计算结果为弧度制，范围（0， PI），越小越好
         angle = np.rad2deg(radius)
@@ -129,14 +129,14 @@ class Multirotor:
     三个加速度有统一的范围
     '''
 
-    def step(self, action):
-        done = self.if_done()
+    def step(self, action, step):
+        done = self.if_done(step)
         arrive_reward = self.arrive_reward()
         yaw_reward = self.yaw_reward()
         min_sensor_reward = self.min_sensor_reward()
         num_sensor_reward = self.num_sensor_reward()
         collision_reward = self.collision_reward()
-        step_reward = self.step_reward()
+        step_reward = self.step_reward(step)
         ax = action[0]
         ay = action[1]
         az = action[2]
@@ -146,18 +146,25 @@ class Multirotor:
         self.client.moveByVelocityAsync(vx=self.vx + ax,
                                         vy=self.vy + ay,
                                         vz=self.vz + az,
-                                        duration=0.5,
+                                        duration=0.1,
                                         drivetrain=airsim.DrivetrainType.ForwardOnly,
                                         yaw_mode=my_yaw_mode).join()
         next_position = self.client.simGetGroundTruthKinematics().position
         distance_reward = self.distance_reward(next_position.x_val, next_position.y_val, next_position.z_val)
         reward = arrive_reward + yaw_reward + min_sensor_reward + num_sensor_reward + collision_reward + step_reward + distance_reward
-        self.current_set(self.client)
+
+        kinematic_state = self.client.simGetGroundTruthKinematics()
+        self.ux = float(kinematic_state.position.x_val)
+        self.uy = float(kinematic_state.position.y_val)
+        self.uz = float(kinematic_state.position.z_val)
+        self.vx = float(kinematic_state.linear_velocity.x_val)
+        self.vy = float(kinematic_state.linear_velocity.y_val)
+        self.vz = float(kinematic_state.linear_velocity.z_val)
         next_state = self.get_state()
 
         return next_state, reward, done
 
-    def if_done(self):
+    def if_done(self, step):
         # 与目标点距离小于10米
         x = self.tx - self.ux
         y = self.ty - self.uy
@@ -166,7 +173,7 @@ class Multirotor:
         if model_a <= 10.0:
             return True
         # 发生碰撞
-        if self.client.simGetCollisionInfo().has_collided:
+        if step != 0 and self.client.simGetCollisionInfo().has_collided:
             return True
         # 触及边界
         if self.ux <= self.bound_x[0] or self.ux >= self.bound_x[1] or \
@@ -177,7 +184,7 @@ class Multirotor:
         return False
 
     '''
-    与目标点距离变化奖励/惩罚(-0.2,0.2)
+    与目标点距离变化奖励/惩罚(-0.4,0.4)
     '''
 
     def distance_reward(self, next_x, next_y, next_z):
@@ -191,7 +198,7 @@ class Multirotor:
         zb = self.tz - next_z
         model_b = pow(xb ** 2 + yb ** 2 + zb ** 2, 0.5)
 
-        return 0.1 * (model_a - model_b)
+        return 0.2 * (model_a - model_b)
 
     '''
     抵达目标点奖励+5
@@ -250,8 +257,8 @@ class Multirotor:
     漫游惩罚-0.02
     '''
 
-    def step_reward(self):
-        if not self.if_done():
+    def step_reward(self, step):
+        if not self.if_done(step):
             return -0.02
         else:
             return 0

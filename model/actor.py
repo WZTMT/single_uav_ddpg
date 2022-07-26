@@ -36,4 +36,4 @@ class Actor(nn.Module):
 
 if __name__ == '__main__':
     actor = Actor(n_states=3 + 3 + 3 + 1 + 37, n_actions=3)
-    print(actor.linear5.weight.detach().shape)
+    print(sum(p.numel() for p in actor.parameters() if p.requires_grad))

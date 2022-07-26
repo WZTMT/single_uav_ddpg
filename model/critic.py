@@ -26,3 +26,8 @@ class Critic(nn.Module):
         x = F.relu(self.linear2(x))
         q = self.linear3(x)
         return q
+
+
+if __name__ == '__main__':
+    critic = Critic(n_states=3 + 3 + 3 + 1 + 37, n_actions=3)
+    print(sum(p.numel() for p in critic.parameters() if p.requires_grad))
