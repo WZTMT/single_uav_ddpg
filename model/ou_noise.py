@@ -28,7 +28,8 @@ class OrnsteinUhlenbeckActionNoise:
         self.decay_period = decay_period
 
     # 直接调用得到噪音，该噪音要加在action上，加完后在使用np.clip()对action进行裁剪，限制其范围
-    def __call__(self):
+    def __call__(self, t=0):
+        self.sigma = self.max_sigma - (self.max_sigma - self.min_sigma) * min(1.0, t / self.decay_period)  # sigma会逐渐衰减
         x = self.x_prev + self.theta * (self.mu - self.x_prev) * self.dt + self.sigma * np.sqrt(
             self.dt) * np.random.normal(size=self.mu.shape)
         self.x_prev = x
@@ -51,11 +52,11 @@ class OrnsteinUhlenbeckActionNoise:
 
 
 if __name__ == '__main__':
-    action = torch.Tensor([.25, .1, .7])
+    action = np.array([.25, .1, .7])
     n_action = action.shape[0]
     ou_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(n_action))
     print(ou_noise())
-    action = action + ou_noise()  # 动作加噪音
+    action = action + ou_noise(t=100)  # 动作加噪音
     print(action)
     action = np.clip(action, -.5, .5)  # 裁剪
-    print(action)
+    print(action[0], action[1], action[2])

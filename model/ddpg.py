@@ -3,19 +3,19 @@ import torch.optim as optim
 import torch.nn as nn
 import numpy as np
 
-from actor import Actor
-from critic import Critic
-from replay_buffer import ReplayBuffer
+from model.actor import Actor
+from model.critic import Critic
+from model.replay_buffer import ReplayBuffer
 
 
 class DDPG:
-    def __init__(self, n_states, n_actions, cfg):
+    def __init__(self, cfg):
         super().__init__()
         self.device = cfg.device
-        self.critic = Critic(n_states, n_actions).to(self.device)
-        self.actor = Actor(n_states, n_actions).to(self.device)
-        self.target_critic = Critic(n_states, n_actions).to(self.device)
-        self.target_actor = Actor(n_states, n_actions).to(self.device)
+        self.critic = Critic(cfg.n_state, cfg.n_action).to(self.device)
+        self.actor = Actor(cfg.n_state, cfg.n_action).to(self.device)
+        self.target_critic = Critic(cfg.n_state, cfg.n_action).to(self.device)
+        self.target_actor = Actor(cfg.n_state, cfg.n_action).to(self.device)
 
         # 复制参数到目标网络
         # param是online网络的参数，tensor1.copy_(tensor2)，将2的元素复制给1
@@ -39,12 +39,9 @@ class DDPG:
         # 变成二维tensor，[1,3]，因为一维的标量不能做tensor的乘法，actor中第一层的weight形状为[3,512](标量也可以做乘法)
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         action = self.actor(state)
-        # tensor.detach()与tensor.data的功能相同，但是若因外部修改导致梯度反向传播出错，.detach()会报错，.data不行
-        action = action.detach().cpu().numpy()
-        ax = action[0, 0]  # 前面是一个数组，仅包含一条数据，[0,0]取出第一个元素
-        ay = action[0, 1]
-        az = action[0, 2]
-        return ax, ay, az
+        # tensor.detach()与tensor.data的功能相同，但是若因外部修改导致梯度反向传播出错，.detach()会报错，.data不行，且.detach()得到的数据不带梯度
+        action = action.detach().cpu().squeeze(0).numpy()
+        return action
 
     def update(self):
         if len(self.memory) < self.batch_size:  # 当 memory 中不满足一个批量时，不更新策略
@@ -64,8 +61,9 @@ class DDPG:
         # 用target网络计算y值(expected_value)
         next_action = self.target_actor(next_state)
         target_value = self.target_critic(next_state, next_action.detach())  # 一个网络的输出作为另一个网络的输入，需要.detach()，取出不带梯度的数据
-        expected_value = reward + (1.0 - done) * self.gamma * target_value  # 对于episode结束的Transition，因为不存在new_action，不计算q值
-        expected_value = torch.clamp(expected_value, -np.inf, np.inf)
+        # y值为当前的奖励加上未来可能的Q值，而对于episode结束的Transition，因为不存在未来的动作和状态，所以未来部分为0
+        expected_value = reward + (1.0 - done) * self.gamma * target_value
+        expected_value = torch.clamp(expected_value, -np.inf, np.inf)  # 将数据裁剪到min和max之间
 
         value = self.critic(state, action)  # online网络的计算结果为原值
         mse_loss = nn.MSELoss()
@@ -99,7 +97,7 @@ class DDPG:
 
 
 if __name__ == '__main__':
-    reward = [.5]
+    reward = np.array([.5])
     state = torch.FloatTensor(reward).unsqueeze(0)
     print(state)
 
