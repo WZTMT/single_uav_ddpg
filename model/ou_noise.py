@@ -14,7 +14,7 @@ class OrnsteinUhlenbeckActionNoise:
     theta值越大，向均值靠近的速度越快，由噪声回归均值的时间更短
     """
 
-    def __init__(self, mu, theta=0.15, max_sigma=0.3, min_sigma=0.3, dt=1e-2, x0=None, decay_period=100000):
+    def __init__(self, mu, theta=0.15, max_sigma=0.3, min_sigma=0.1, dt=1e-2, x0=None, decay_period=100000):
         self.x_prev = None  # 没有施加噪声的原值（不是action值，原action加上这个值才是OU处理过的action）
         self.mu = mu  # OU噪声的参数
         self.theta = theta  # OU噪声的参数
@@ -56,7 +56,10 @@ if __name__ == '__main__':
     n_action = action.shape[0]
     ou_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(n_action))
     print(ou_noise())
-    action = action + ou_noise(t=100)  # 动作加噪音
-    print(action)
-    action = np.clip(action, -.5, .5)  # 裁剪
-    print(action[0], action[1], action[2])
+    ou_noise.reset()
+    for i in range(100):
+        print(ou_noise(i))
+    # action = action + ou_noise(t=100)  # 动作加噪音
+    # print(action)
+    # action = np.clip(action, -.5, .5)  # 裁剪
+    # print(action[0], action[1], action[2])

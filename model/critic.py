@@ -6,11 +6,11 @@ import torch.nn.functional as F
 class Critic(nn.Module):
     def __init__(self, n_states, n_actions, init_w=3e-3):
         super(Critic, self).__init__()
-        self.linear1 = nn.Linear(n_states + n_actions, 512)
-        self.linear2 = nn.Linear(512, 1024)
-        self.linear3 = nn.Linear(1024, 1024)
-        self.linear4 = nn.Linear(1024, 512)
-        self.linear5 = nn.Linear(512, 1)
+        self.linear1 = nn.Linear(n_states + n_actions, 256)
+        self.linear2 = nn.Linear(256, 256)
+        self.linear3 = nn.Linear(256, 256)
+        self.linear4 = nn.Linear(256, 128)
+        self.linear5 = nn.Linear(128, 1)
         # 随机初始化为较小的值
         nn.init.uniform_(self.linear5.weight.detach(), a=-init_w, b=init_w)
         nn.init.uniform_(self.linear5.bias.detach(), a=-init_w, b=init_w)
@@ -29,5 +29,5 @@ class Critic(nn.Module):
 
 
 if __name__ == '__main__':
-    critic = Critic(n_states=3 + 3 + 3 + 1 + 37, n_actions=3)
+    critic = Critic(n_states=3 + 1 + 3 + 1 + 13, n_actions=3)
     print(sum(p.numel() for p in critic.parameters() if p.requires_grad))

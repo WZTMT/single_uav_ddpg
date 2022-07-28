@@ -28,16 +28,17 @@ def get_args():
     parser.add_argument('--algo_name', default='DDPG', type=str, help="name of algorithm")
     parser.add_argument('--env_name', default='UE4 and Airsim', type=str, help="name of environment")
     parser.add_argument('--seed', default=1, type=int, help="random seed")
-    parser.add_argument('--n_state', default=3 + 3 + 3 + 1 + 37, type=int, help="numbers of state space")
+    parser.add_argument('--n_state', default=3 + 1 + 3 + 1 + 13, type=int, help="numbers of state space")
     parser.add_argument('--n_action', default=3, type=int, help="numbers of state action")
-    parser.add_argument('--train_eps', default=8000, type=int, help="episodes of training")
-    parser.add_argument('--test_eps', default=300, type=int, help="episodes of testing")
-    parser.add_argument('--max_step', default=2000, type=int, help="max step for getting target")
-    parser.add_argument('--gamma', default=0.99, type=float, help="discounted factor")
+    parser.add_argument('--update_times', default=1, type=int, help="update times")
+    parser.add_argument('--train_eps', default=2000, type=int, help="episodes of training")
+    parser.add_argument('--test_eps', default=100, type=int, help="episodes of testing")
+    parser.add_argument('--max_step', default=1000, type=int, help="max step for getting target")
+    parser.add_argument('--gamma', default=0.98, type=float, help="discounted factor")
     parser.add_argument('--critic_lr', default=1e-3, type=float, help="learning rate of critic")
     parser.add_argument('--actor_lr', default=1e-4, type=float, help="learning rate of actor")
-    parser.add_argument('--memory_capacity', default=20000, type=int, help="memory capacity")
-    parser.add_argument('--batch_size', default=128, type=int)
+    parser.add_argument('--memory_capacity', default=2**17, type=int, help="memory capacity")
+    parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--soft_tau', default=1e-2, type=float)
     parser.add_argument('--result_path', default=curr_path + "/outputs/" + parser.parse_args().env_name + \
                                                  '/' + curr_time + '/results/')
@@ -55,14 +56,15 @@ def set_seed(seed):
     """
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
+    # np.random.seed(seed)
     torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def train(cfg, client, agent):
     print('Start training!')
     print(f'Env:{cfg.env_name}, Algorithm:{cfg.algo_name}, Device:{cfg.device}')
-    ou_noise = OUNoise(mu=np.zeros(cfg.n_action))  # noise of action
+    ou_noise = OUNoise(mu=np.zeros(cfg.n_action), decay_period=cfg.max_step * 0.5)  # noise of action
     rewards = []  # 记录所有回合的奖励
     ma_rewards = []  # 记录所有回合的滑动平均奖励
     writer = SummaryWriter('./train_image')
@@ -71,25 +73,30 @@ def train(cfg, client, agent):
         state = env.get_state()
         ou_noise.reset()
         ep_reward = 0
-        env.current_set(client)
         finish_step = 0
+        final_distance = state[3]
         for i_step in range(cfg.max_step):
             finish_step = finish_step + 1
             action = agent.choose_action(state)
-            action = action + ou_noise(t=i_step)  # 动作加噪音
+            action = action + ou_noise(i_step)  # 动作加噪声 OU噪声最大不会超过0.3
             # 加速度范围 ax[-1,1] ay[-1,1] az[-1,1] 速度大致范围 vx[-11,11] vy[-11,11] vz[-8,8]
-            action = np.clip(action, -0.5, 0.5)  # 裁剪
-            next_state, reward, done = env.step(action, i_step)
+            action = np.clip(action, -1, 1)  # 裁剪
+            next_state, reward, done = env.step(action)
             ep_reward += reward
             agent.memory.push(state, action, reward, next_state, done)
-            agent.update()
+
+            replay_len = agent.memory.__len__()
+            k = 1 + replay_len / cfg.memory_capacity
+            update_times = int(k * cfg.update_times)
+            for _ in range(update_times):
+                agent.update()
+
             state = next_state
-            print('\rEpisode: {} Step: {} Reward: {:.2f} Target: {} Now: {}'.format(i_ep+1, i_step+1,  ep_reward, state[3:6], state[0:3]), end="")
+            print('\rEpisode: {}\tStep: {}\tReward: {:.2f}\tDistance: {}'.format(i_ep+1, i_step+1,  ep_reward, state[3]), end="")
+            final_distance = state[3]
             if done:
                 break
-        print('\rEpisode: {} Finish step: {} Reward: {:.2f} Target: {}'.format(i_ep+1, finish_step, ep_reward, state[3:6]))
-        if (i_ep + 1) % 10 == 0:
-            agent.save(path=cfg.model_path)
+        print('\rEpisode: {}\tFinish step: {}\tReward: {:.2f}\tFinal distance: {}'.format(i_ep+1, finish_step, ep_reward, final_distance))
         rewards.append(ep_reward)
         if ma_rewards:
             ma_rewards.append(0.9 * ma_rewards[-1] + 0.1 * ep_reward)
@@ -101,6 +108,8 @@ def train(cfg, client, agent):
                                'ma_reward': ma_rewards[-1]
                            },
                            global_step=i_ep)
+        if (i_ep + 1) % 10 == 0:
+            agent.save(path=cfg.model_path)
     writer.close()
     print('Finish training!')
     return rewards, ma_rewards
@@ -111,7 +120,7 @@ if __name__ == '__main__':
     set_seed(cfg.seed)
     make_dir(cfg.result_path, cfg.model_path)
     client = airsim.MultirotorClient()  # connect to the AirSim simulator
-    agent = DDPG(cfg=cfg)
+    agent = DDPG(cfg)
     rewards, ma_rewards = train(cfg, client, agent)
     save_args(cfg)
     save_results(rewards, ma_rewards, tag='train', path=cfg.result_path)

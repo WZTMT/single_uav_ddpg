@@ -11,11 +11,11 @@ torch.nn.init中包括很多初始化方法
 class Actor(nn.Module):
     def __init__(self, n_states, n_actions, init_w=3e-3):
         super(Actor, self).__init__()
-        self.linear1 = nn.Linear(n_states, 1024)
-        self.linear2 = nn.Linear(1024, 1024)
-        self.linear3 = nn.Linear(1024, 1024)
-        self.linear4 = nn.Linear(1024, 512)
-        self.linear5 = nn.Linear(512, n_actions)
+        self.linear1 = nn.Linear(n_states, 256)
+        self.linear2 = nn.Linear(256, 256)
+        self.linear3 = nn.Linear(256, 256)
+        self.linear4 = nn.Linear(256, 128)
+        self.linear5 = nn.Linear(128, n_actions)
 
         # tensor.uniform_()函数，从参数的均匀分布中采样进行填充
         nn.init.uniform_(self.linear5.weight.detach(), a=-init_w, b=init_w)
@@ -35,5 +35,5 @@ class Actor(nn.Module):
 
 
 if __name__ == '__main__':
-    actor = Actor(n_states=3 + 3 + 3 + 1 + 37, n_actions=3)
+    actor = Actor(n_states=3 + 1 + 3 + 1 + 13, n_actions=3)
     print(sum(p.numel() for p in actor.parameters() if p.requires_grad))
