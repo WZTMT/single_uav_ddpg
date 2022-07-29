@@ -38,7 +38,7 @@ class DDPG:
     def choose_action(self, state):
         # 变成二维tensor，[1,3]，因为一维的标量不能做tensor的乘法，actor中第一层的weight形状为[3,512](标量也可以做乘法)
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        action = self.actor(state) * 0.7
+        action = self.actor(state)
         # tensor.detach()与tensor.data的功能相同，但是若因外部修改导致梯度反向传播出错，.detach()会报错，.data不行，且.detach()得到的数据不带梯度
         action = action.detach().cpu().squeeze(0).numpy()
         return action

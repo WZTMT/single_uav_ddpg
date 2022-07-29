@@ -8,7 +8,7 @@ from airsim import YawMode
 
 
 def normal_func(x):
-    y = -0.8 * (1 / (1 + math.exp(-x / 40)) - 0.5)
+    y = 1 / (1 + math.exp(-x * 3)) - 0.5
     return y
 
 
@@ -40,7 +40,7 @@ class Multirotor:
         self.target_x = [-350, -150]
         self.target_y = [250, 450]
         self.target_z = [-100, -50]
-        self.d_safe = 15
+        self.d_safe = 19.9
 
         # 目标点坐标
         self.tx, self.ty, self.tz = self.generate_target()
@@ -94,6 +94,7 @@ class Multirotor:
     距离传感器返回的距离数据，水平，竖直各半个圆周，每30度一采样，
     共13个数据，顺序为S、Y(1-6)、P(1-6)
     '''
+
     def get_distance_sensors_data(self):
         yaw_axis = ['Y', 'P']
         pitch_axis = ['1', '2', '3', '4', '5', '6']
@@ -110,7 +111,7 @@ class Multirotor:
     '''
     重置无人机并返回初始状态(numpy.array)
     '''
-
+    # TODO 考虑对状态进行归一化
     def get_state(self):
         position = np.array([self.tx - self.ux, self.ty - self.uy, self.tz - self.uz])
         target = np.array([self.get_distance()])
@@ -139,13 +140,12 @@ class Multirotor:
         num_sensor_reward = self.num_sensor_reward()
         collision_reward = 0
         step_reward = self.step_reward()
-        distance_reward = self.distance_reward()
         cross_border_reward = self.cross_border_reward()
 
         # 碰撞完成与碰撞奖励一起做
         if self.client.simGetCollisionInfo().has_collided:
             done = True
-            collision_reward = -50
+            collision_reward = -40
 
         ax = action[0]
         ay = action[1]
@@ -160,10 +160,11 @@ class Multirotor:
                                         duration=0.5,
                                         drivetrain=airsim.DrivetrainType.ForwardOnly,
                                         yaw_mode=my_yaw_mode).join()
-        reward = arrive_reward + yaw_reward + min_sensor_reward + num_sensor_reward + collision_reward + \
-                 step_reward + distance_reward + cross_border_reward
 
         kinematic_state = self.client.simGetGroundTruthKinematics()
+        distance_reward = self.distance_reward(kinematic_state.position.x_val, kinematic_state.position.y_val, kinematic_state.position.z_val)
+        reward = arrive_reward + yaw_reward + min_sensor_reward + num_sensor_reward + collision_reward + step_reward + distance_reward + cross_border_reward
+
         self.ux = float(kinematic_state.position.x_val)
         self.uy = float(kinematic_state.position.y_val)
         self.uz = float(kinematic_state.position.z_val)
@@ -175,9 +176,9 @@ class Multirotor:
         return next_state, reward, done
 
     def if_done(self):
-        # 与目标点距离小于10米
+        # 与目标点距离小于20米
         model_a = self.get_distance()
-        if model_a <= 10.0:
+        if model_a <= 20.0:
             return True
         # 发生碰撞
 
@@ -190,26 +191,30 @@ class Multirotor:
         return False
 
     '''
-    越界惩罚-20
+    越界惩罚-40
     '''
 
     def cross_border_reward(self):
         if self.ux < self.bound_x[0] or self.ux > self.bound_x[1] or \
                 self.uy < self.bound_y[0] or self.uy > self.bound_y[1] or \
                 self.uz < self.bound_z[0]:
-            return -20
+            return -40
         return 0
 
     '''
-    与目标点距离惩罚(-0.4,0)
+    与目标点距离惩罚(-0.5,0.5)，两种方式需要权衡，另一种是（-.5,0）,func=-(1 / (1 + math.exp(-x / 30)) - 0.5)
     '''
 
-    def distance_reward(self):
+    def distance_reward(self, next_ux, next_uy, next_uz):
         model_a = self.get_distance()
-        return normal_func(model_a)
+        xa = self.tx - next_ux
+        ya = self.ty - next_uy
+        za = self.tz - next_uz
+        model_b = pow(xa ** 2 + ya ** 2 + za ** 2, 0.5)
+        return normal_func(model_a-model_b)
 
     '''
-    抵达目标点奖励+50
+    抵达目标点奖励+60
     '''
 
     def arrive_reward(self):
@@ -218,20 +223,20 @@ class Multirotor:
         z = self.tz - self.uz
         model_a = pow(x ** 2 + y ** 2 + z ** 2, 0.5)
         if model_a <= 10.0:
-            return 50
+            return 60
         else:
             return 0
 
     '''
-    偏航惩罚(-0.1,0)
+    偏航惩罚(-0.3,0)
     '''
 
     def yaw_reward(self):
         yaw = self.get_deflection_angle()
-        return -0.1 * (yaw / 180)
+        return -0.2 * (yaw / 180)
 
     '''
-    最短激光雷达长度惩罚(-0.5,0)  
+    最短激光雷达长度惩罚(-1.5,0)，均值为0.5  
     '''
 
     def min_sensor_reward(self):
@@ -249,10 +254,10 @@ class Multirotor:
     def num_sensor_reward(self):
         sensor_data = self.get_distance_sensors_data()
         num = sum(i < self.d_safe for i in sensor_data)
-        return -0.5 * (num / len(sensor_data))
+        return -0.4 * (num / len(sensor_data))
 
     '''
-    碰撞惩罚-50
+    碰撞惩罚-40
     '''
 
     '''
@@ -267,5 +272,5 @@ class Multirotor:
 
 
 if __name__ == '__main__':
-    normal_func = -0.8 * (1 / (1 + math.exp(-10 / 40)) - 0.5)
+    normal_func = -(1 / (1 + math.exp(-600 / 100)) - 0.5)
     print(normal_func)

@@ -31,7 +31,7 @@ class Actor(nn.Module):
         x = F.relu(self.linear3(x))
         x = F.relu(self.linear4(x))
         action = F.tanh(self.linear5(x))  # torch.tanh与F.tanh没有区别
-        return action
+        return action * 0.7
 
 
 if __name__ == '__main__':
