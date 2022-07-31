@@ -1,0 +1,21 @@
+------------------ start ------------------
+algo_name : DDPG
+env_name : UE4 and Airsim
+seed : 1
+n_state : 21
+n_action : 3
+update_times : 1
+train_eps : 2000
+test_eps : 100
+max_step : 1000
+gamma : 0.98
+critic_lr : 0.001
+actor_lr : 0.0001
+memory_capacity : 131072
+batch_size : 256
+soft_tau : 0.01
+result_path : D:\Pycharm\project\single-uav-ddpg/outputs/UE4 and Airsim/20220728-131136/results/
+model_path : D:\Pycharm\project\single-uav-ddpg/outputs/UE4 and Airsim/20220728-131136/models/
+save_fig : True
+device : cuda:0
+------------------- end -------------------

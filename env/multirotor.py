@@ -36,7 +36,7 @@ class Multirotor:
 
         self.bound_x = [-500, 500]
         self.bound_y = [-500, 500]
-        self.bound_z = [-200, 0]
+        self.bound_z = [-250, 0]
         self.target_x = [-350, -150]
         self.target_y = [250, 450]
         self.target_z = [-100, -50]
@@ -145,7 +145,7 @@ class Multirotor:
         # 碰撞完成与碰撞奖励一起做
         if self.client.simGetCollisionInfo().has_collided:
             done = True
-            collision_reward = -40
+            collision_reward = -55
 
         ax = action[0]
         ay = action[1]
@@ -178,7 +178,7 @@ class Multirotor:
     def if_done(self):
         # 与目标点距离小于20米
         model_a = self.get_distance()
-        if model_a <= 20.0:
+        if model_a <= 25.0:
             return True
         # 发生碰撞
 
@@ -191,7 +191,7 @@ class Multirotor:
         return False
 
     '''
-    越界惩罚-40
+    越界惩罚-55
     '''
 
     def cross_border_reward(self):
@@ -214,7 +214,7 @@ class Multirotor:
         return normal_func(model_a-model_b)
 
     '''
-    抵达目标点奖励+60
+    抵达目标点奖励+50
     '''
 
     def arrive_reward(self):
@@ -228,7 +228,7 @@ class Multirotor:
             return 0
 
     '''
-    偏航惩罚(-0.3,0)
+    偏航惩罚(-0.2,0)
     '''
 
     def yaw_reward(self):
@@ -257,7 +257,7 @@ class Multirotor:
         return -0.4 * (num / len(sensor_data))
 
     '''
-    碰撞惩罚-40
+    碰撞惩罚-55
     '''
 
     '''

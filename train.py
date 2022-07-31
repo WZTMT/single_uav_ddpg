@@ -92,11 +92,11 @@ def train(cfg, client, agent):
                 agent.update()
 
             state = next_state
-            print('\rEpisode: {}\tStep: {}\tReward: {:.2f}\tDistance: {}'.format(i_ep+1, i_step+1,  ep_reward, state[3]), end="")
+            print('\rEpisode: {}\tStep: {}\tReward: {:.2f}\tDistance: {:.2f}'.format(i_ep+1, i_step+1,  ep_reward, state[3]), end="")
             final_distance = state[3]
             if done:
                 break
-        print('\rEpisode: {}\tFinish step: {}\tReward: {:.2f}\tFinal distance: {}'.format(i_ep+1, finish_step, ep_reward, final_distance))
+        print('\rEpisode: {}\tFinish step: {}\tReward: {:.2f}\tFinal distance: {:.2f}'.format(i_ep+1, finish_step, ep_reward, final_distance))
         rewards.append(ep_reward)
         if ma_rewards:
             ma_rewards.append(0.9 * ma_rewards[-1] + 0.1 * ep_reward)
