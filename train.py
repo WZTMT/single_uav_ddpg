@@ -24,6 +24,7 @@ def get_args():
     Hyper parameters
     """
     curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")  # Obtain current time
+    curr_time = "20220728-131136"
     parser = argparse.ArgumentParser(description="hyper parameters")
     parser.add_argument('--algo_name', default='DDPG', type=str, help="name of algorithm")
     parser.add_argument('--env_name', default='UE4 and Airsim', type=str, help="name of environment")
@@ -31,7 +32,7 @@ def get_args():
     parser.add_argument('--n_state', default=3 + 1 + 3 + 1 + 13, type=int, help="numbers of state space")
     parser.add_argument('--n_action', default=3, type=int, help="numbers of state action")
     parser.add_argument('--update_times', default=1, type=int, help="update times")
-    parser.add_argument('--train_eps', default=2000, type=int, help="episodes of training")
+    parser.add_argument('--train_eps', default=1500, type=int, help="episodes of training")
     parser.add_argument('--test_eps', default=100, type=int, help="episodes of testing")
     parser.add_argument('--max_step', default=1000, type=int, help="max step for getting target")
     parser.add_argument('--gamma', default=0.98, type=float, help="discounted factor")
@@ -57,8 +58,6 @@ def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     # np.random.seed(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
 
 
 def train(cfg, client, agent):
@@ -74,7 +73,7 @@ def train(cfg, client, agent):
         ou_noise.reset()
         ep_reward = 0
         finish_step = 0
-        final_distance = state[3]
+        final_distance = state[3] * env.init_distance
         for i_step in range(cfg.max_step):
             finish_step = finish_step + 1
             action = agent.choose_action(state)
@@ -85,15 +84,15 @@ def train(cfg, client, agent):
             ep_reward += reward
             agent.memory.push(state, action, reward, next_state, done)
 
-            replay_len = agent.memory.__len__()
+            replay_len = len(agent.memory)
             k = 1 + replay_len / cfg.memory_capacity
             update_times = int(k * cfg.update_times)
             for _ in range(update_times):
                 agent.update()
 
             state = next_state
-            print('\rEpisode: {}\tStep: {}\tReward: {:.2f}\tDistance: {:.2f}'.format(i_ep+1, i_step+1,  ep_reward, state[3]), end="")
-            final_distance = state[3]
+            print('\rEpisode: {}\tStep: {}\tReward: {:.2f}\tDistance: {:.2f}'.format(i_ep+1, i_step+1,  ep_reward, state[3] * env.init_distance), end="")
+            final_distance = state[3] * env.init_distance
             if done:
                 break
         print('\rEpisode: {}\tFinish step: {}\tReward: {:.2f}\tFinal distance: {:.2f}'.format(i_ep+1, finish_step, ep_reward, final_distance))

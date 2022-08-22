@@ -24,7 +24,9 @@ class Critic(nn.Module):
         x = torch.cat([state, action], 1)
         x = F.relu(self.linear1(x))
         x = F.relu(self.linear2(x))
-        q = self.linear3(x)
+        x = F.relu(self.linear3(x))
+        x = F.relu(self.linear4(x))
+        q = self.linear5(x)
         return q
 
 

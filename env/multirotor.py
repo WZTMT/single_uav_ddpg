@@ -8,7 +8,7 @@ from airsim import YawMode
 
 
 def normal_func(x):
-    y = 1 / (1 + math.exp(-x * 3)) - 0.5
+    y = 1 / (1 + math.exp(-x * 2.4)) - 0.5
     return y
 
 
@@ -37,20 +37,23 @@ class Multirotor:
         self.bound_x = [-500, 500]
         self.bound_y = [-500, 500]
         self.bound_z = [-250, 0]
-        self.target_x = [-350, -150]
-        self.target_y = [250, 450]
-        self.target_z = [-100, -50]
-        self.d_safe = 19.9
+        # self.target_x = [-350, -150]
+        # self.target_y = [250, 450]
+        # self.target_z = [-100, -50]
+        self.target_x = [-500, -500]
+        self.target_y = [-500, 500]
+        self.target_z = [-250, 0]
+        self.d_safe = 15
 
         # 目标点坐标
         self.tx, self.ty, self.tz = self.generate_target()
+        self.init_distance = self.get_distance()
 
     def generate_target(self):
         """
         生成目标点的位置
         seed为随机种子
         """
-        # TODO 尝试修改随机种子
         tx = np.random.rand() * (self.target_x[1] - self.target_x[0]) + self.target_x[0]
         ty = np.random.rand() * (self.target_y[1] - self.target_y[0]) + self.target_y[0]
         tz = np.random.rand() * (self.target_z[1] - self.target_z[0]) + self.target_z[0]
@@ -109,15 +112,15 @@ class Multirotor:
         return data
 
     '''
-    重置无人机并返回初始状态(numpy.array)
+    返回无人机状态(numpy.array)
     '''
-    # TODO 考虑对状态进行归一化
     def get_state(self):
+        # 进行归一化
         position = np.array([self.tx - self.ux, self.ty - self.uy, self.tz - self.uz])
-        target = np.array([self.get_distance()])
+        target = np.array([self.get_distance() / self.init_distance])
         velocity = np.array([self.vx, self.vy, self.vz])
-        angle = np.array([self.get_deflection_angle()])
-        sensor_data = np.array(self.get_distance_sensors_data())
+        angle = np.array([self.get_deflection_angle() / 180])
+        sensor_data = np.array(self.get_distance_sensors_data()) / 20
 
         state = np.append(position, target)
         state = np.append(state, velocity)
@@ -131,21 +134,25 @@ class Multirotor:
     加速度的坐标为NED，z轴加速度为负则向上飞行
     三个加速度有统一的范围
     '''
-
+    # 碰撞惩罚要略大于目标点惩罚
     def step(self, action):
         done = self.if_done()
         arrive_reward = self.arrive_reward()
         yaw_reward = self.yaw_reward()
         min_sensor_reward = self.min_sensor_reward()
-        num_sensor_reward = self.num_sensor_reward()
+        # num_sensor_reward = self.num_sensor_reward()
         collision_reward = 0
         step_reward = self.step_reward()
         cross_border_reward = self.cross_border_reward()
 
         # 碰撞完成与碰撞奖励一起做
         if self.client.simGetCollisionInfo().has_collided:
+            # 发生碰撞
             done = True
-            collision_reward = -55
+            '''
+            碰撞惩罚-8
+            '''
+            collision_reward = -8
 
         ax = action[0]
         ay = action[1]
@@ -163,7 +170,7 @@ class Multirotor:
 
         kinematic_state = self.client.simGetGroundTruthKinematics()
         distance_reward = self.distance_reward(kinematic_state.position.x_val, kinematic_state.position.y_val, kinematic_state.position.z_val)
-        reward = arrive_reward + yaw_reward + min_sensor_reward + num_sensor_reward + collision_reward + step_reward + distance_reward + cross_border_reward
+        reward = arrive_reward + yaw_reward + min_sensor_reward + collision_reward + step_reward + distance_reward + cross_border_reward
 
         self.ux = float(kinematic_state.position.x_val)
         self.uy = float(kinematic_state.position.y_val)
@@ -176,12 +183,10 @@ class Multirotor:
         return next_state, reward, done
 
     def if_done(self):
-        # 与目标点距离小于20米
+        # 与目标点距离小于25米
         model_a = self.get_distance()
         if model_a <= 25.0:
             return True
-        # 发生碰撞
-
         # 触及边界
         if self.ux < self.bound_x[0] or self.ux > self.bound_x[1] or \
                 self.uy < self.bound_y[0] or self.uy > self.bound_y[1] or \
@@ -191,14 +196,14 @@ class Multirotor:
         return False
 
     '''
-    越界惩罚-55
+    越界惩罚-8
     '''
 
     def cross_border_reward(self):
         if self.ux < self.bound_x[0] or self.ux > self.bound_x[1] or \
                 self.uy < self.bound_y[0] or self.uy > self.bound_y[1] or \
                 self.uz < self.bound_z[0]:
-            return -40
+            return -8
         return 0
 
     '''
@@ -214,7 +219,7 @@ class Multirotor:
         return normal_func(model_a-model_b)
 
     '''
-    抵达目标点奖励+50
+    抵达目标点奖励+5
     '''
 
     def arrive_reward(self):
@@ -222,43 +227,40 @@ class Multirotor:
         y = self.ty - self.uy
         z = self.tz - self.uz
         model_a = pow(x ** 2 + y ** 2 + z ** 2, 0.5)
-        if model_a <= 10.0:
-            return 60
+        if model_a <= 25.0:
+            return 5
         else:
             return 0
 
     '''
-    偏航惩罚(-0.2,0)
+    偏航惩罚(-0.4,0)，均值0.2
     '''
 
     def yaw_reward(self):
         yaw = self.get_deflection_angle()
-        return -0.2 * (yaw / 180)
+        return -0.4 * (yaw / 180)
 
     '''
-    最短激光雷达长度惩罚(-1.5,0)，均值为0.5  
+    最短激光雷达长度惩罚(-.8,0) 
     '''
 
     def min_sensor_reward(self):
         sensor_data = self.get_distance_sensors_data()
         d_min = min(sensor_data)
         if d_min < self.d_safe:
-            return -0.1 * (self.d_safe - d_min)
+            # return -0.1 * (self.d_safe - d_min)
+            return 0.9 * (math.exp((self.d_safe - d_min) / -6) - 1)
         else:
             return 0
 
     '''
-    小于安全阈值的激光雷达条数惩罚(-0.3,0)
+    小于安全阈值的激光雷达条数惩罚(-0.4,0), 均值0.2
     '''
 
-    def num_sensor_reward(self):
-        sensor_data = self.get_distance_sensors_data()
-        num = sum(i < self.d_safe for i in sensor_data)
-        return -0.4 * (num / len(sensor_data))
-
-    '''
-    碰撞惩罚-55
-    '''
+    # def num_sensor_reward(self):
+    #     sensor_data = self.get_distance_sensors_data()
+    #     num = sum(i < self.d_safe for i in sensor_data)
+    #     return -0.4 * (num / len(sensor_data))
 
     '''
     漫游惩罚-0.02
@@ -272,5 +274,7 @@ class Multirotor:
 
 
 if __name__ == '__main__':
-    normal_func = -(1 / (1 + math.exp(-600 / 100)) - 0.5)
-    print(normal_func)
+    client = airsim.MultirotorClient()  # connect to the AirSim simulator
+    mr = Multirotor(client)
+    data = np.array(mr.get_distance_sensors_data()) / mr.d_safe
+    print(data)
